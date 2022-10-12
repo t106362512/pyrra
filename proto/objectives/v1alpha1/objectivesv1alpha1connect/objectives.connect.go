@@ -35,6 +35,7 @@ type ObjectiveServiceClient interface {
 	GraphErrorBudget(context.Context, *connect_go.Request[v1alpha1.GraphErrorBudgetRequest]) (*connect_go.Response[v1alpha1.GraphErrorBudgetResponse], error)
 	GraphRate(context.Context, *connect_go.Request[v1alpha1.GraphRateRequest]) (*connect_go.Response[v1alpha1.GraphRateResponse], error)
 	GraphErrors(context.Context, *connect_go.Request[v1alpha1.GraphErrorsRequest]) (*connect_go.Response[v1alpha1.GraphErrorsResponse], error)
+	GraphBurnrates(context.Context, *connect_go.Request[v1alpha1.GraphBurnratesRequest]) (*connect_go.Response[v1alpha1.GraphBurnratesResponse], error)
 }
 
 // NewObjectiveServiceClient constructs a client for the objectives.v1alpha1.ObjectiveService
@@ -77,6 +78,11 @@ func NewObjectiveServiceClient(httpClient connect_go.HTTPClient, baseURL string,
 			baseURL+"/objectives.v1alpha1.ObjectiveService/GraphErrors",
 			opts...,
 		),
+		graphBurnrates: connect_go.NewClient[v1alpha1.GraphBurnratesRequest, v1alpha1.GraphBurnratesResponse](
+			httpClient,
+			baseURL+"/objectives.v1alpha1.ObjectiveService/GraphBurnrates",
+			opts...,
+		),
 	}
 }
 
@@ -88,6 +94,7 @@ type objectiveServiceClient struct {
 	graphErrorBudget *connect_go.Client[v1alpha1.GraphErrorBudgetRequest, v1alpha1.GraphErrorBudgetResponse]
 	graphRate        *connect_go.Client[v1alpha1.GraphRateRequest, v1alpha1.GraphRateResponse]
 	graphErrors      *connect_go.Client[v1alpha1.GraphErrorsRequest, v1alpha1.GraphErrorsResponse]
+	graphBurnrates   *connect_go.Client[v1alpha1.GraphBurnratesRequest, v1alpha1.GraphBurnratesResponse]
 }
 
 // List calls objectives.v1alpha1.ObjectiveService.List.
@@ -120,6 +127,11 @@ func (c *objectiveServiceClient) GraphErrors(ctx context.Context, req *connect_g
 	return c.graphErrors.CallUnary(ctx, req)
 }
 
+// GraphBurnrates calls objectives.v1alpha1.ObjectiveService.GraphBurnrates.
+func (c *objectiveServiceClient) GraphBurnrates(ctx context.Context, req *connect_go.Request[v1alpha1.GraphBurnratesRequest]) (*connect_go.Response[v1alpha1.GraphBurnratesResponse], error) {
+	return c.graphBurnrates.CallUnary(ctx, req)
+}
+
 // ObjectiveServiceHandler is an implementation of the objectives.v1alpha1.ObjectiveService service.
 type ObjectiveServiceHandler interface {
 	List(context.Context, *connect_go.Request[v1alpha1.ListRequest]) (*connect_go.Response[v1alpha1.ListResponse], error)
@@ -128,6 +140,7 @@ type ObjectiveServiceHandler interface {
 	GraphErrorBudget(context.Context, *connect_go.Request[v1alpha1.GraphErrorBudgetRequest]) (*connect_go.Response[v1alpha1.GraphErrorBudgetResponse], error)
 	GraphRate(context.Context, *connect_go.Request[v1alpha1.GraphRateRequest]) (*connect_go.Response[v1alpha1.GraphRateResponse], error)
 	GraphErrors(context.Context, *connect_go.Request[v1alpha1.GraphErrorsRequest]) (*connect_go.Response[v1alpha1.GraphErrorsResponse], error)
+	GraphBurnrates(context.Context, *connect_go.Request[v1alpha1.GraphBurnratesRequest]) (*connect_go.Response[v1alpha1.GraphBurnratesResponse], error)
 }
 
 // NewObjectiveServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -167,6 +180,11 @@ func NewObjectiveServiceHandler(svc ObjectiveServiceHandler, opts ...connect_go.
 		svc.GraphErrors,
 		opts...,
 	))
+	mux.Handle("/objectives.v1alpha1.ObjectiveService/GraphBurnrates", connect_go.NewUnaryHandler(
+		"/objectives.v1alpha1.ObjectiveService/GraphBurnrates",
+		svc.GraphBurnrates,
+		opts...,
+	))
 	return "/objectives.v1alpha1.ObjectiveService/", mux
 }
 
@@ -195,6 +213,10 @@ func (UnimplementedObjectiveServiceHandler) GraphRate(context.Context, *connect_
 
 func (UnimplementedObjectiveServiceHandler) GraphErrors(context.Context, *connect_go.Request[v1alpha1.GraphErrorsRequest]) (*connect_go.Response[v1alpha1.GraphErrorsResponse], error) {
 	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("objectives.v1alpha1.ObjectiveService.GraphErrors is not implemented"))
+}
+
+func (UnimplementedObjectiveServiceHandler) GraphBurnrates(context.Context, *connect_go.Request[v1alpha1.GraphBurnratesRequest]) (*connect_go.Response[v1alpha1.GraphBurnratesResponse], error) {
+	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("objectives.v1alpha1.ObjectiveService.GraphBurnrates is not implemented"))
 }
 
 // ObjectiveBackendServiceClient is a client for the objectives.v1alpha1.ObjectiveBackendService
