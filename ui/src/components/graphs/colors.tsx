@@ -50,3 +50,5 @@ export const yellows = [
   'FFF59D',
   'FFF9C4',
 ]
+
+export const burnrate = ['EF9A9A', 'B71C1C']

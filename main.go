@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	objectivesv1alpha1 "github.com/pyrra-dev/pyrra/proto/objectives/v1alpha1"
@@ -436,6 +437,107 @@ type objectiveServer struct {
 	logger  log.Logger
 	promAPI *promCache
 	client  objectivesv1alpha1connect.ObjectiveBackendServiceClient
+}
+
+func (s *objectiveServer) GraphBurnrates(ctx context.Context, req *connect.Request[objectivesv1alpha1.GraphBurnratesRequest]) (*connect.Response[objectivesv1alpha1.GraphBurnratesResponse], error) {
+	objective, err := s.getObjective(ctx, req.Msg.Expr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge grouping into objective's query
+	if req.Msg.Grouping != "" {
+		groupingMatchers, err := parser.ParseMetricSelector(req.Msg.Grouping)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("failed to parse expr: %w", err))
+		}
+		if objective.Indicator.Ratio != nil {
+			for _, m := range groupingMatchers {
+				objective.Indicator.Ratio.Errors.LabelMatchers = append(objective.Indicator.Ratio.Errors.LabelMatchers, m)
+				objective.Indicator.Ratio.Total.LabelMatchers = append(objective.Indicator.Ratio.Total.LabelMatchers, m)
+			}
+		}
+		if objective.Indicator.Latency != nil {
+			for _, m := range groupingMatchers {
+				objective.Indicator.Latency.Success.LabelMatchers = append(objective.Indicator.Latency.Success.LabelMatchers, m)
+				objective.Indicator.Latency.Total.LabelMatchers = append(objective.Indicator.Latency.Total.LabelMatchers, m)
+			}
+		}
+	}
+
+	end := time.Now()
+	start := end.Add(-1 * time.Hour)
+
+	if !req.Msg.Start.AsTime().IsZero() && !req.Msg.End.AsTime().IsZero() {
+		start = req.Msg.Start.AsTime()
+		end = req.Msg.End.AsTime()
+	}
+	step := end.Sub(start) / 1000
+
+	cacheDuration := rangeCache(start, end)
+
+	// TODO: Use these recordig rules to speed things up?
+	// short := objective.BurnrateName(req.Msg.Short.AsDuration())
+	// long := objective.BurnrateName(req.Msg.Long.AsDuration())
+
+	short := objective.Burnrate(req.Msg.Short.AsDuration())
+	long := objective.Burnrate(req.Msg.Long.AsDuration())
+
+	var (
+		shortValues [][]float64
+		longValues  [][]float64
+	)
+
+	errg, ctx := errgroup.WithContext(ctx)
+	errg.Go(func() error {
+		valueShort, _, err := s.promAPI.QueryRange(contextSetPromCache(ctx, cacheDuration), short, prometheusv1.Range{
+			Start: start,
+			End:   end,
+			Step:  step,
+		})
+		if err != nil {
+			level.Warn(s.logger).Log("msg", "failed to query burnrate", "query", short, "err", err)
+			return connect.NewError(connect.CodeInternal, err)
+		}
+		shortMatrix, ok := valueShort.(model.Matrix)
+		if !ok {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("expected a matrix for burnrate values"))
+		}
+		shortValues = matrixToValues(shortMatrix)
+		return nil
+	})
+	errg.Go(func() error {
+		valueLong, _, err := s.promAPI.QueryRange(contextSetPromCache(ctx, cacheDuration), long, prometheusv1.Range{
+			Start: start,
+			End:   end,
+			Step:  step,
+		})
+		if err != nil {
+			level.Warn(s.logger).Log("msg", "failed to query burnrate", "query", long, "err", err)
+			return connect.NewError(connect.CodeInternal, err)
+		}
+		longMatrix, ok := valueLong.(model.Matrix)
+		if !ok {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("expected a matrix for burnrate values"))
+		}
+		longValues = matrixToValues(longMatrix)
+		return nil
+	})
+	if err := errg.Wait(); err != nil {
+		return nil, err
+	}
+
+	timeseries := []*objectivesv1alpha1.Timeseries{{
+		Labels: []string{`burnrate="short"`},
+		Query:  short,
+		Series: []*objectivesv1alpha1.Series{{Values: shortValues[0]}, {Values: shortValues[1]}},
+	}, {
+		Labels: []string{`burnrate="long"`},
+		Query:  long,
+		Series: []*objectivesv1alpha1.Series{{Values: longValues[0]}, {Values: longValues[1]}},
+	}}
+
+	return connect.NewResponse(&objectivesv1alpha1.GraphBurnratesResponse{Timeseries: timeseries}), nil
 }
 
 func (s *objectiveServer) getObjective(ctx context.Context, expr string) (slo.Objective, error) {
